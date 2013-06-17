@@ -29,8 +29,8 @@ import com.proofpoint.log.Logger;
 import com.proofpoint.units.Duration;
 import org.iq80.snappy.SnappyInputStream;
 
-import javax.annotation.PreDestroy;
 import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import javax.inject.Inject;
 import java.io.BufferedReader;
 import java.io.File;
@@ -41,8 +41,8 @@ import java.net.URI;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
-
 import java.util.concurrent.TimeUnit;
+
 import static com.proofpoint.event.collector.combiner.S3StorageHelper.buildS3Location;
 import static com.proofpoint.json.JsonCodec.jsonCodec;
 

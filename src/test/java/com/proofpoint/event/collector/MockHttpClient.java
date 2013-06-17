@@ -22,7 +22,6 @@ import com.proofpoint.http.client.RequestStats;
 import com.proofpoint.http.client.Response;
 import com.proofpoint.http.client.ResponseHandler;
 
-import javax.ws.rs.core.Response.Status;
 import java.util.LinkedList;
 import java.util.List;
 
