@@ -15,7 +15,8 @@
  */
 package com.proofpoint.event.collector;
 
-import com.google.common.collect.HashMultimap;
+import com.google.common.base.Joiner;
+import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -70,32 +71,37 @@ public class TestEventTapWriter
     private static final Event[] eventsA = createEvents(typeA, 10);
     private static final Event[] eventsB = createEvents(typeB, 10);
     private static final Event[] eventsC = createEvents(typeC, 10);
-    private static final ServiceDescriptor tapA = createServiceDescriptor(typeA, flowId1, instanceA);
+    private static final ImmutableSet<String> desiredProperties = ImmutableSet.of();
+    private static final ImmutableSet<String> desiredPropertiesFilteredA = ImmutableSet.of("key1");
+    private static final ImmutableSet<String> desiredPropertiesFilteredB = ImmutableSet.of("key2");
+    private static final ServiceDescriptor tapA = createServiceDescriptor(typeA, flowId1, instanceA, desiredProperties);
+    private static final ServiceDescriptor tapAFilteredA = createServiceDescriptor(typeA, flowId1, instanceA, desiredPropertiesFilteredA);
     private static final ServiceDescriptor tapA1 = tapA;
     private static final ServiceDescriptor tapA1a = tapA1;
-    private static final ServiceDescriptor tapA1b = createServiceDescriptor(typeA, flowId1, instanceB);
-    private static final ServiceDescriptor tapA2 = createServiceDescriptor(typeA, flowId2, instanceA);
+    private static final ServiceDescriptor tapA1b = createServiceDescriptor(typeA, flowId1, instanceB, desiredProperties);
+    private static final ServiceDescriptor tapA2 = createServiceDescriptor(typeA, flowId2, instanceA, desiredProperties);
+    private static final ServiceDescriptor tapA2FilteredB = createServiceDescriptor(typeA, flowId2, instanceB, desiredPropertiesFilteredB);
     private static final ServiceDescriptor tapA2a = tapA2;
-    private static final ServiceDescriptor tapA2b = createServiceDescriptor(typeA, flowId2, instanceB);
-    private static final ServiceDescriptor tapB = createServiceDescriptor(typeB, flowId1, instanceA);
+    private static final ServiceDescriptor tapA2b = createServiceDescriptor(typeA, flowId2, instanceB, desiredProperties);
+    private static final ServiceDescriptor tapB = createServiceDescriptor(typeB, flowId1, instanceA, desiredProperties);
     private static final ServiceDescriptor tapB1 = tapB;
-    private static final ServiceDescriptor tapB2 = createServiceDescriptor(typeB, flowId2, instanceA);
+    private static final ServiceDescriptor tapB2 = createServiceDescriptor(typeB, flowId2, instanceA, desiredProperties);
     private static final ServiceDescriptor tapB2a = tapB2;
-    private static final ServiceDescriptor tapB2b = createServiceDescriptor(typeB, flowId2, instanceB);
-    private static final ServiceDescriptor tapC = createServiceDescriptor(typeC, flowId1, instanceA);
-    private static final ServiceDescriptor qtapA = createQosServiceDescriptor(typeA, flowId1, instanceA);
+    private static final ServiceDescriptor tapB2b = createServiceDescriptor(typeB, flowId2, instanceB, desiredProperties);
+    private static final ServiceDescriptor tapC = createServiceDescriptor(typeC, flowId1, instanceA, desiredProperties);
+    private static final ServiceDescriptor qtapA = createQosServiceDescriptor(typeA, flowId1, instanceA, desiredProperties);
     private static final ServiceDescriptor qtapA1 = qtapA;
-    private static final ServiceDescriptor qtapA2 = createQosServiceDescriptor(typeA, flowId2, instanceA);
+    private static final ServiceDescriptor qtapA2 = createQosServiceDescriptor(typeA, flowId2, instanceA, desiredProperties);
     private static final ServiceDescriptor qtapA2a = qtapA2;
-    private static final ServiceDescriptor qtapA2b = createQosServiceDescriptor(typeA, flowId2, instanceB);
-    private static final ServiceDescriptor qtapA3 = createQosServiceDescriptor(typeA, flowId3, instanceA);
-    private static final ServiceDescriptor qtapB = createQosServiceDescriptor(typeB, flowId1, instanceA);
+    private static final ServiceDescriptor qtapA2b = createQosServiceDescriptor(typeA, flowId2, instanceB, desiredProperties);
+    private static final ServiceDescriptor qtapA3 = createQosServiceDescriptor(typeA, flowId3, instanceA, desiredProperties);
+    private static final ServiceDescriptor qtapB = createQosServiceDescriptor(typeB, flowId1, instanceA, desiredProperties);
     private static final ServiceDescriptor qtapB1 = qtapB;
-    private static final ServiceDescriptor qtapB2 = createQosServiceDescriptor(typeB, flowId2, instanceA);
-    private static final ServiceDescriptor qtapB3 = createQosServiceDescriptor(typeB, flowId3, instanceA);
+    private static final ServiceDescriptor qtapB2 = createQosServiceDescriptor(typeB, flowId2, instanceA, desiredProperties);
+    private static final ServiceDescriptor qtapB3 = createQosServiceDescriptor(typeB, flowId3, instanceA, desiredProperties);
     private static final ServiceDescriptor qtapB2a = qtapB2;
-    private static final ServiceDescriptor qtapB2b = createQosServiceDescriptor(typeB, flowId2, instanceB);
-    private static final ServiceDescriptor qtapC = createQosServiceDescriptor(typeC, flowId1, instanceA);
+    private static final ServiceDescriptor qtapB2b = createQosServiceDescriptor(typeB, flowId2, instanceB, desiredProperties);
+    private static final ServiceDescriptor qtapC = createQosServiceDescriptor(typeC, flowId1, instanceA, desiredProperties);
 
     private ServiceSelector serviceSelector;
     private Map<String, Boolean> currentProcessors;
@@ -718,6 +724,31 @@ public class TestEventTapWriter
     }
 
     @Test
+    public void testWriteToFlowWithNewFilter()
+    {
+        updateThenRefreshFlowsThenCheck(tapA);
+        writeEvents(eventsA[0]);
+        forTap(tapA).verifyEvents(eventsA[0]);
+
+        updateThenRefreshFlowsThenCheck(tapAFilteredA);
+        writeEvents(eventsA[1]);
+        forTap(tapAFilteredA).verifyEvents(eventsA[0], eventsA[1]);
+    }
+
+    @Test
+    public void testWriteToNewFlowWithNewFilter()
+    {
+        updateThenRefreshFlowsThenCheck(tapAFilteredA);
+        writeEvents(eventsA[0]);
+        forTap(tapAFilteredA).verifyEvents(eventsA[0]);
+
+        updateThenRefreshFlowsThenCheck(tapAFilteredA, tapA2FilteredB);
+        writeEvents(eventsA[1]);
+        forTap(tapAFilteredA).verifyEvents(eventsA[0], eventsA[1]);
+        forTap(tapA2FilteredB).verifyEvents(eventsA[1]);
+    }
+
+    @Test
     public void testWriteDoesntSendToOldFlows()
     {
         updateThenRefreshFlowsThenCheck(tapA, tapB);
@@ -802,7 +833,7 @@ public class TestEventTapWriter
 
     private static Event createEvent(String type)
     {
-        return new Event(type, randomUUID().toString(), "host", DateTime.now(), ImmutableMap.<String, Object>of());
+        return new Event(type, randomUUID().toString(), "host", DateTime.now(), ImmutableMap.<String, Object>of("key1", "value1", "key2", "value2"));
     }
 
     private static Event[] createEvents(String type, int count)
@@ -873,6 +904,7 @@ public class TestEventTapWriter
     private EventTapFlowVerifier forSharedTaps(ServiceDescriptor... taps)
     {
         ImmutableSet.Builder<URI> urisBuilder = ImmutableSet.builder();
+        ImmutableSet.Builder<String> desiredPropertiesBuilder = ImmutableSet.builder();
         String eventType = null;
         String flowId = null;
         boolean qosEnabled = false;
@@ -895,6 +927,11 @@ public class TestEventTapWriter
                 flowId = thisFlowId;
             }
             urisBuilder.add(URI.create(thisUri));
+            String propertiesToSerialize = tap.getProperties().get(EventTapWriter.PROPERTIES_TO_SERIALIZE);
+            if (propertiesToSerialize != null && !propertiesToSerialize.equals("")) {
+                desiredPropertiesBuilder.addAll(Splitter.on(",").split(propertiesToSerialize));
+            }
+
             if (thisQosEnabled) {
                 qosEnabled = true;
             }
@@ -903,7 +940,7 @@ public class TestEventTapWriter
         assertNotNull(eventType, "No taps specified?");
         assertNotNull(flowId, "No taps specified?");
 
-        return new EventTapFlowVerifier(urisBuilder.build(), eventType, flowId, qosEnabled);
+        return new EventTapFlowVerifier(urisBuilder.build(), desiredPropertiesBuilder.build(), eventType, flowId, qosEnabled);
     }
 
     private static void checkCounters(Map<String, CounterState> counters, String type, int received, int lost)
@@ -956,18 +993,20 @@ public class TestEventTapWriter
                 builder.build());
     }
 
-    private static ServiceDescriptor createServiceDescriptor(String eventType, String flowId, String instanceId)
+    private static ServiceDescriptor createServiceDescriptor(String eventType, String flowId, String instanceId, Set<String> desiredProperties)
     {
+        String propertiesToSerialize = Joiner.on(",").join(desiredProperties);
         return createServiceDescriptor(eventType,
-                ImmutableMap.of(EventTapWriter.FLOW_ID_PROPERTY_NAME, flowId, "http", format("http://%s-%s.event.tap", eventType, instanceId)));
+                ImmutableMap.of(EventTapWriter.FLOW_ID_PROPERTY_NAME, flowId, "http", format("http://%s-%s.event.tap", eventType, instanceId), EventTapWriter.PROPERTIES_TO_SERIALIZE, propertiesToSerialize));
     }
 
-    private static ServiceDescriptor createQosServiceDescriptor(String eventType, String flowId, String instanceId)
+    private static ServiceDescriptor createQosServiceDescriptor(String eventType, String flowId, String instanceId, Set<String> desiredProperties)
     {
+        String propertiesToSerialize = Joiner.on(",").join(desiredProperties);
         return createServiceDescriptor(eventType,
                 ImmutableMap.of("qos.delivery", "retry",
                         EventTapWriter.FLOW_ID_PROPERTY_NAME, flowId,
-                        "http", format("http://%s-%s.event.tap", eventType, instanceId)));
+                        "http", format("http://%s-%s.event.tap", eventType, instanceId), EventTapWriter.PROPERTIES_TO_SERIALIZE, propertiesToSerialize));
     }
 
     private class MockBatchProcessorFactory implements BatchProcessorFactory
@@ -1036,33 +1075,33 @@ public class TestEventTapWriter
     private class MockEventTapFlowFactory implements EventTapFlowFactory
     {
         @Override
-        public EventTapFlow createEventTapFlow(String eventType, String flowId, Set<URI> taps, Observer observer)
+        public EventTapFlow createEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps, Observer observer)
         {
-            return createEventTapFlow(nonQosEventTapFlows, eventType, flowId, taps, observer);
+            return createEventTapFlow(nonQosEventTapFlows, eventType, propertiesToSerialize, flowId, taps, observer);
         }
 
         @Override
-        public EventTapFlow createEventTapFlow(String eventType, String flowId, Set<URI> taps)
+        public EventTapFlow createEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps)
         {
-            return createEventTapFlow(eventType, flowId, taps, EventTapFlow.NULL_OBSERVER);
+            return createEventTapFlow(eventType, propertiesToSerialize, flowId, taps, EventTapFlow.NULL_OBSERVER);
         }
 
         @Override
-        public EventTapFlow createQosEventTapFlow(String eventType, String flowId, Set<URI> taps, Observer observer)
+        public EventTapFlow createQosEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps, Observer observer)
         {
-            return createEventTapFlow(qosEventTapFlows, eventType, flowId, taps, observer);
+            return createEventTapFlow(qosEventTapFlows, eventType, propertiesToSerialize, flowId, taps, observer);
         }
 
         @Override
-        public EventTapFlow createQosEventTapFlow(String eventType, String flowId, Set<URI> taps)
+        public EventTapFlow createQosEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps)
         {
-            return createQosEventTapFlow(eventType, flowId, taps, EventTapFlow.NULL_OBSERVER);
+            return createQosEventTapFlow(eventType, propertiesToSerialize, flowId, taps, EventTapFlow.NULL_OBSERVER);
         }
 
-        private EventTapFlow createEventTapFlow(Multimap<List<String>, MockEventTapFlow> eventTapFlows, String eventType, String flowId, Set<URI> taps, Observer observer)
+        private EventTapFlow createEventTapFlow(Multimap<List<String>, MockEventTapFlow> eventTapFlows, String eventType,  Set<String> propertiesToSerialize, String flowId, Set<URI> taps, Observer observer)
         {
             List<String> key = ImmutableList.of(eventType, flowId);
-            MockEventTapFlow eventTapFlow = new MockEventTapFlow(taps);
+            MockEventTapFlow eventTapFlow = new MockEventTapFlow(taps, propertiesToSerialize);
             eventTapFlows.put(key, eventTapFlow);
             return eventTapFlow;
         }
@@ -1071,12 +1110,14 @@ public class TestEventTapWriter
     private static class MockEventTapFlow implements EventTapFlow
     {
         private Set<URI> taps;
+        private Set<String> propertiesToSerialize;
         private List<Event> events;
         private long droppedEntries = 0;
 
-        public MockEventTapFlow(Set<URI> taps)
+        public MockEventTapFlow(Set<URI> taps, Set<String> propertiesToSerialize)
         {
             this.taps = taps;
+            this.propertiesToSerialize = propertiesToSerialize;
             this.events = new LinkedList<>();
         }
 
@@ -1090,6 +1131,18 @@ public class TestEventTapWriter
         public void setTaps(Set<URI> taps)
         {
             this.taps = taps;
+        }
+
+        @Override
+        public Set<String> getPropertiesToSerialize()
+        {
+            return propertiesToSerialize;
+        }
+
+        @Override
+        public void setPropertiesToSerialize(Set<String> propertiesToSerialize)
+        {
+            this.propertiesToSerialize = propertiesToSerialize;
         }
 
         @Override
@@ -1122,14 +1175,16 @@ public class TestEventTapWriter
         private final String flowId;
         private final List<String> key;
         private final boolean qosEnabled;
+        private final Set<String> propertiesToSerialize;
 
-        public EventTapFlowVerifier(Set<URI> taps, String eventType, String flowId, boolean qosEnabled)
+        public EventTapFlowVerifier(Set<URI> taps, Set<String> propertiesToSerialize, String eventType, String flowId, boolean qosEnabled)
         {
             this.taps = taps;
             this.eventType = eventType;
             this.flowId = flowId;
             this.key = ImmutableList.of(eventType, flowId);
             this.qosEnabled = qosEnabled;
+            this.propertiesToSerialize = propertiesToSerialize;
         }
 
         public EventTapFlowVerifier verifyEvents(Event... events)
@@ -1141,6 +1196,7 @@ public class TestEventTapWriter
 
             MockEventTapFlow eventTapFlow = eventTapFlows.iterator().next();
             assertEquals(eventTapFlow.getTaps(), taps, context());
+            assertEquals(eventTapFlow.getPropertiesToSerialize(), propertiesToSerialize, context());
             assertEqualsNoOrder(eventTapFlow.getEvents().toArray(), ImmutableList.copyOf(events).toArray(), context());
             return this;
         }
@@ -1168,7 +1224,7 @@ public class TestEventTapWriter
 
         private String context()
         {
-            return format("eventType=%s flowId=%s qos=%s uris=%s", eventType, flowId, qosEnabled ? "true" : "false", taps);
+            return format("eventType=%s flowId=%s qos=%s uris=%s propertiesToSerialize=%s", eventType, flowId, qosEnabled ? "true" : "false", taps, propertiesToSerialize);
         }
     }
 }

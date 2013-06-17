@@ -16,6 +16,7 @@
 package com.proofpoint.event.collector;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -50,6 +51,9 @@ import static com.google.common.base.Strings.isNullOrEmpty;
 public class EventTapWriter implements EventWriter, EventTapStats
 {
     @VisibleForTesting
+    static final String PROPERTIES_TO_SERIALIZE = "desiredProperties";
+
+    @VisibleForTesting
     static final String FLOW_ID_PROPERTY_NAME = "flowId";
 
     private static final Logger log = Logger.get(EventTapWriter.class);
@@ -66,8 +70,8 @@ public class EventTapWriter implements EventWriter, EventTapStats
     private ScheduledFuture<?> refreshJob;
     private final Duration flowRefreshDuration;
 
-    private final EventCounters<List<String>> queueCounters = new EventCounters<List<String>>();
-    private final EventCounters<List<String>> flowCounters = new EventCounters<List<String>>();
+    private final EventCounters<List<String>> queueCounters = new EventCounters<>();
+    private final EventCounters<List<String>> flowCounters = new EventCounters<>();
 
     @Inject
     public EventTapWriter(@ServiceType("eventTap") ServiceSelector selector,
@@ -127,7 +131,7 @@ public class EventTapWriter implements EventWriter, EventTapStats
     {
         Map<String, EventTypePolicy> existingPolicies = eventTypePolicies.get();
         Map<String, Map<String, FlowInfo>> existingFlows = flows;
-        ImmutableMap.Builder<String, EventTypePolicy> policiesBuilder = ImmutableMap.<String, EventTypePolicy>builder();
+        ImmutableMap.Builder<String, EventTypePolicy> policiesBuilder = ImmutableMap.builder();
 
         Map<String, Map<String, FlowInfo>> newFlows = constructFlowInfoFromDiscovery();
         if (existingFlows.equals(newFlows)) {
@@ -184,13 +188,14 @@ public class EventTapWriter implements EventWriter, EventTapStats
     {
         List<ServiceDescriptor> descriptors = selector.selectAllServices();
         // First level is EventType, second is flowId
-        Map<String, Map<String, FlowInfo.Builder>> flows = new HashMap<String, Map<String, FlowInfo.Builder>>();
+        Map<String, Map<String, FlowInfo.Builder>> flows = new HashMap<>();
 
         for (ServiceDescriptor descriptor : descriptors) {
             Map<String, String> properties = descriptor.getProperties();
             String eventType = properties.get("eventType");
             String flowId = properties.get(FLOW_ID_PROPERTY_NAME);
             URI uri = safeUriFromString(properties.get("http"));
+            Set<String> propertiesToSerialize = safeStringSetFromCsvString(properties.get(PROPERTIES_TO_SERIALIZE));
             String qosDelivery = properties.get("qos.delivery");
 
             if (isNullOrEmpty(eventType) || isNullOrEmpty(flowId) || uri == null) {
@@ -199,7 +204,7 @@ public class EventTapWriter implements EventWriter, EventTapStats
 
             Map<String, FlowInfo.Builder> flowsForEventType = flows.get(eventType);
             if (flowsForEventType == null) {
-                flowsForEventType = new HashMap<String, FlowInfo.Builder>();
+                flowsForEventType = new HashMap<>();
                 flows.put(eventType, flowsForEventType);
             }
 
@@ -214,6 +219,7 @@ public class EventTapWriter implements EventWriter, EventTapStats
             }
 
             flowBuilder.addDestination(uri);
+            flowBuilder.addPropertiesToSerialize(propertiesToSerialize);
         }
 
         return constructFlowsFromBuilderMap(flows);
@@ -247,22 +253,24 @@ public class EventTapWriter implements EventWriter, EventTapStats
             String flowId = flowEntry.getKey();
             FlowInfo updatedFlowInfo = flowEntry.getValue();
             Set<URI> destinations = ImmutableSet.copyOf(updatedFlowInfo.destinations);
+            Set<String> propertiesToSerialize = ImmutableSet.copyOf(firstNonNull(updatedFlowInfo.propertiesToSerialize, ImmutableSet.<String>of()));
             FlowPolicy existingFlowPolicy = existingPolicy.flowPolicies.get(flowId);
 
             if (existingFlowPolicy == null || existingFlowPolicy.qosEnabled != updatedFlowInfo.qosEnabled) {
                 EventTapFlow eventTapFlow;
                 if (updatedFlowInfo.qosEnabled) {
-                    eventTapFlow = createQosEventTapFlow(eventType, flowId, destinations);
+                    eventTapFlow = createQosEventTapFlow(eventType, propertiesToSerialize, flowId, destinations);
                 }
                 else {
-                    eventTapFlow = createNonQosEventTapFlow(eventType, flowId, destinations);
+                    eventTapFlow = createNonQosEventTapFlow(eventType, propertiesToSerialize, flowId, destinations);
                 }
                 BatchProcessor<Event> batchProcessor = createBatchProcessor(eventType, flowId, eventTapFlow);
                 policyBuilder.addFlowPolicy(flowId, batchProcessor, eventTapFlow, updatedFlowInfo.qosEnabled);
                 batchProcessor.start();
             }
-            else if (!destinations.equals(existingFlowPolicy.eventTapFlow.getTaps())) {
+            else if (!destinations.equals(existingFlowPolicy.eventTapFlow.getTaps()) || !propertiesToSerialize.equals(existingFlowPolicy.eventTapFlow.getPropertiesToSerialize())) {
                 existingFlowPolicy.eventTapFlow.setTaps(destinations);
+                existingFlowPolicy.eventTapFlow.setPropertiesToSerialize(propertiesToSerialize);
                 policyBuilder.addFlowPolicy(flowId, existingFlowPolicy);
             }
             else {
@@ -328,14 +336,14 @@ public class EventTapWriter implements EventWriter, EventTapStats
         };
     }
 
-    private EventTapFlow createNonQosEventTapFlow(String eventType, String flowId, Set<URI> taps)
+    private EventTapFlow createNonQosEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps)
     {
-        return eventTapFlowFactory.createEventTapFlow(eventType, flowId, taps, createEventTapFlowObserver(eventType, flowId));
+        return eventTapFlowFactory.createEventTapFlow(eventType, propertiesToSerialize, flowId, taps, createEventTapFlowObserver(eventType, flowId));
     }
 
-    private EventTapFlow createQosEventTapFlow(String eventType, String flowId, Set<URI> taps)
+    private EventTapFlow createQosEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps)
     {
-        return eventTapFlowFactory.createQosEventTapFlow(eventType, flowId, taps, createEventTapFlowObserver(eventType, flowId));
+        return eventTapFlowFactory.createQosEventTapFlow(eventType, propertiesToSerialize, flowId, taps, createEventTapFlowObserver(eventType, flowId));
     }
 
     private EventTapFlow.Observer createEventTapFlowObserver(final String eventType, final String flowId)
@@ -377,6 +385,16 @@ public class EventTapWriter implements EventWriter, EventTapStats
         }
     }
 
+    private static Set<String> safeStringSetFromCsvString(String csv)
+    {
+        try {
+            return ImmutableSet.copyOf(Splitter.on(",").split(csv));
+        }
+        catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private static String createBatchProcessorName(String eventType, String flowId)
     {
         return String.format("%s{%s}", eventType, flowId);
@@ -386,11 +404,13 @@ public class EventTapWriter implements EventWriter, EventTapStats
     {
         private final boolean qosEnabled;
         private final Set<URI> destinations;
+        private final Set<String> propertiesToSerialize;
 
-        private FlowInfo(boolean qosEnabled, Set<URI> destinations)
+        private FlowInfo(boolean qosEnabled, Set<URI> destinations, Set<String> propertiesToSerialize)
         {
             this.qosEnabled = qosEnabled;
             this.destinations = ImmutableSet.copyOf(destinations);
+            this.propertiesToSerialize = propertiesToSerialize;
         }
 
         static Builder builder()
@@ -402,6 +422,7 @@ public class EventTapWriter implements EventWriter, EventTapStats
         {
             private boolean qosEnabled = false;
             private ImmutableSet.Builder<URI> destinations = ImmutableSet.builder();
+            private ImmutableSet.Builder<String> propertiesToSerialize = ImmutableSet.builder();
 
             public Builder setQosEnabled(boolean enabled)
             {
@@ -415,9 +436,19 @@ public class EventTapWriter implements EventWriter, EventTapStats
                 return this;
             }
 
+            public Builder addPropertiesToSerialize(Iterable<String> properties)
+            {
+                if (properties != null) {
+                    for (String property : properties) {
+                        propertiesToSerialize.add(property);
+                    }
+                }
+                return this;
+            }
+
             public FlowInfo build()
             {
-                return new FlowInfo(qosEnabled, destinations.build());
+                return new FlowInfo(qosEnabled, destinations.build(), propertiesToSerialize.build());
             }
         }
     }

@@ -39,6 +39,10 @@ public interface EventTapFlow extends BatchHandler<Event>
 
     void setTaps(Set<URI> taps);
 
+    Set<String> getPropertiesToSerialize();
+
+    void setPropertiesToSerialize(Set<String> propertiesToSerialize);
+
     interface Observer
     {
         void onRecordsSent(URI uri, int count);

@@ -15,17 +15,21 @@
  */
 package com.proofpoint.event.collector;
 
+import com.fasterxml.jackson.core.Version;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.MapMaker;
 import com.google.common.collect.Sets;
+import com.proofpoint.event.collector.FilteringMapSerializer.PropertyMapFilter;
 import com.proofpoint.http.client.HttpClient;
 import com.proofpoint.http.client.Request;
 import com.proofpoint.http.client.Response;
 import com.proofpoint.http.client.ResponseHandler;
-import com.proofpoint.json.JsonCodec;
+import com.proofpoint.json.ObjectMapperProvider;
 import com.proofpoint.log.Logger;
 import com.proofpoint.units.Duration;
 
@@ -38,9 +42,10 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT;
+import static com.google.common.base.Objects.firstNonNull;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
-import static com.proofpoint.http.client.JsonBodyGenerator.jsonBodyGenerator;
 import static java.lang.String.format;
 import static java.lang.Thread.sleep;
 import static javax.ws.rs.core.Response.Status.Family.CLIENT_ERROR;
@@ -56,7 +61,6 @@ class HttpEventTapFlow implements EventTapFlow
     private static final String QOS_HEADER_DROPPED_ENTRIES = "droppedMessages=%d";
 
     private final HttpClient httpClient;
-    private final JsonCodec<List<Event>> eventsCodec;
     private final long retryDelayMillis;
     private final int retryCount;
     private final String eventType;
@@ -65,12 +69,11 @@ class HttpEventTapFlow implements EventTapFlow
     private final Observer observer;
     private final Set<URI> unestablishedTaps = Sets.newSetFromMap(new MapMaker().<URI, Boolean>makeMap());
     private final AtomicLong droppedEntries = new AtomicLong(0);
+    private volatile ObjectMapperWrapper objectMapper;
 
-    public HttpEventTapFlow(HttpClient httpClient, JsonCodec<List<Event>> eventsCodec,
-            String eventType, String flowId, Set<URI> taps, int retryCount, Duration retryDelay, Observer observer)
+    public HttpEventTapFlow(HttpClient httpClient, String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps, int retryCount, Duration retryDelay, Observer observer)
     {
         this.httpClient = checkNotNull(httpClient, "httpClient is null");
-        this.eventsCodec = checkNotNull(eventsCodec, "eventsCodec is null");
         this.eventType = checkNotNull(eventType, "eventType is null");
         this.flowId = checkNotNull(flowId, "flowId is null");
         this.observer = checkNotNull(observer, "observer is null");
@@ -82,6 +85,7 @@ class HttpEventTapFlow implements EventTapFlow
             this.retryDelayMillis = 0;
         }
         setTaps(taps);
+        setPropertiesToSerialize(propertiesToSerialize);
     }
 
     @Override
@@ -139,6 +143,18 @@ class HttpEventTapFlow implements EventTapFlow
         }
     }
 
+    @Override
+    public Set<String> getPropertiesToSerialize()
+    {
+        return ImmutableSet.copyOf(objectMapper.getDesiredProperties());
+    }
+
+    @Override
+    public void setPropertiesToSerialize(Set<String> propertiesToSerialize)
+    {
+        this.objectMapper = new ObjectMapperWrapper(firstNonNull(propertiesToSerialize, ImmutableSet.<String>of()));
+    }
+
     private boolean sendEvents(List<URI> taps, List<Event> entries)
     {
         Iterable<URI> randomizedTaps;
@@ -171,7 +187,7 @@ class HttpEventTapFlow implements EventTapFlow
         Request.Builder requestBuilder = Request.builder().preparePost()
                 .setUri(uri)
                 .setHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON)
-                .setBodyGenerator(jsonBodyGenerator(eventsCodec, entries));
+                .setBodyGenerator(new ObjectMapperJsonBodyGenerator(objectMapper.getObjectMapper(), entries));
 
         final boolean firstBatch = unestablishedTaps.remove(uri);
         if (firstBatch) {
@@ -255,5 +271,38 @@ class HttpEventTapFlow implements EventTapFlow
     String getFlowId()
     {
         return flowId;
+    }
+
+    private static class ObjectMapperWrapper
+    {
+        private final Set<String> desiredProperties;
+        private final ObjectMapper objectMapper;
+
+        public ObjectMapperWrapper(Set<String> desiredProperties)
+        {
+            this.objectMapper = getMapper(getMapFilterer(desiredProperties));
+            this.desiredProperties = desiredProperties;
+        }
+
+        public Set<String> getDesiredProperties()
+        {
+            return desiredProperties;
+        }
+
+        public ObjectMapper getObjectMapper()
+        {
+            return objectMapper;
+        }
+
+        private ObjectMapper getMapper(FilteringMapSerializer filteringMapSerializer)
+        {
+            SimpleModule testModule = new SimpleModule("FilteringEventModule", Version.unknownVersion()).addSerializer(filteringMapSerializer);
+            return new ObjectMapperProvider().get().enable(INDENT_OUTPUT).registerModule(testModule);
+        }
+
+        private FilteringMapSerializer getMapFilterer(Set<String> propertiesToSerialize)
+        {
+            return new FilteringMapSerializer(ImmutableList.of(new PropertyMapFilter("data", propertiesToSerialize)));
+        }
     }
 }

@@ -22,11 +22,11 @@ import java.util.Set;
 
 public interface EventTapFlowFactory
 {
-    public EventTapFlow createEventTapFlow(String eventType, String flowId, Set<URI> taps, Observer observer);
+    public EventTapFlow createEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps, Observer observer);
 
-    public EventTapFlow createEventTapFlow(String eventType, String flowId, Set<URI> taps);
+    public EventTapFlow createEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps);
 
-    public EventTapFlow createQosEventTapFlow(String eventType, String flowId, Set<URI> taps, Observer observer);
+    public EventTapFlow createQosEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps, Observer observer);
 
-    public EventTapFlow createQosEventTapFlow(String eventType, String flowId, Set<URI> taps);
+    public EventTapFlow createQosEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps);
 }
