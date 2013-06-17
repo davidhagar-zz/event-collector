@@ -36,6 +36,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static com.google.common.base.Objects.firstNonNull;
@@ -61,75 +62,79 @@ public class TestHttpEventTapFlow
     private static final String X_PROOFPOINT_QOS = "X-Proofpoint-QoS";
     private static final Set<URI> singleTap = ImmutableSet.of(create("http://n1.event.tap/post"));
     private static final Set<URI> multipleTaps = ImmutableSet.of(create("http://n2.event.tap/post"), create("http://n3.event.tap/post"));
+    private static final Set<URI> filteredTaps = ImmutableSet.of(create("http://n2.filteredevent.tap/post"), create("http://n3.filteredevent.tap/post"));
+    private static final Set<URI> alternateFilteredTaps = ImmutableSet.of(create("http://n2.altfilteredevent.tap/post"), create("http://n3.altfilteredevent.tap/post"));
     private static final Set<URI> taps = multipleTaps;
     private static final int retryCount = 10;
+    private final String uuidForEvent1 = UUID.randomUUID().toString();
+    private final DateTime nowForEvent1 = DateTime.now();
+    private final String uuidForEvent2 = UUID.randomUUID().toString();
+    private final DateTime nowForEvent2 = DateTime.now();
     private final List<Event> events = ImmutableList.of(
-            new Event("EventType", randomUUID().toString(), "foo.com", DateTime.now(), ImmutableMap.<String, Object>of()),
-            new Event("EventTYpe", randomUUID().toString(), "foo.com", DateTime.now(), ImmutableMap.<String, Object>of()));
+            new Event("EventType", uuidForEvent1, "foo.com", nowForEvent1, ImmutableMap.<String, Object>of("key1", "value1", "key2", "value2", "key3", "value3")),
+            new Event("EventTYpe", uuidForEvent2, "foo.com", nowForEvent2, ImmutableMap.<String, Object>of("key1", "value1a", "key2", "value2a", "key3", "value3a")));
     private MockHttpClient httpClient;
     private Observer observer;
     private HttpEventTapFlow singleEventTapFlow;
     private HttpEventTapFlow multipleEventTapFlow;
     private HttpEventTapFlow multipleEventTapFlowWithRetry;
     private HttpEventTapFlow eventTapFlow;              // Tests that don't care if they are single or multiple.
+    private HttpEventTapFlow filteredEventTapFlow;
+    private HttpEventTapFlow alternateFilteredEventTapFlow;
 
     @BeforeMethod
     private void setup()
     {
         httpClient = new MockHttpClient();
         observer = mock(Observer.class);
-        singleEventTapFlow = new HttpEventTapFlow(httpClient, EVENT_LIST_JSON_CODEC, "EventType", "FlowId", singleTap, 0, null, observer);
-        multipleEventTapFlow = new HttpEventTapFlow(httpClient, EVENT_LIST_JSON_CODEC, "EventType", "FlowId", multipleTaps, 0, null, observer);
-        multipleEventTapFlowWithRetry = new HttpEventTapFlow(httpClient, EVENT_LIST_JSON_CODEC, "EventType", "FlowId", multipleTaps, retryCount, new Duration(1, TimeUnit.MILLISECONDS), observer);
+        singleEventTapFlow = new HttpEventTapFlow(httpClient, "EventType", null, "FlowId", singleTap, 0, null, observer);
+        multipleEventTapFlow = new HttpEventTapFlow(httpClient, "EventType", null, "FlowId", multipleTaps, 0, null, observer);
+        multipleEventTapFlowWithRetry = new HttpEventTapFlow(httpClient, "EventType", null, "FlowId", multipleTaps, retryCount, new Duration(1, TimeUnit.MILLISECONDS), observer);
+        filteredEventTapFlow = new HttpEventTapFlow(httpClient, "EventType", ImmutableSet.of("key1", "key2"), "FlowId", filteredTaps, 0, null, observer);
+        alternateFilteredEventTapFlow = new HttpEventTapFlow(httpClient, "EventType", ImmutableSet.of("key3", "key4"), "FlowId", alternateFilteredTaps, 0, null, observer);
         eventTapFlow = multipleEventTapFlow;
     }
 
     @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "httpClient is null")
     public void testConstructorNullHttpClient()
     {
-        new HttpEventTapFlow(null, EVENT_LIST_JSON_CODEC, "EventType", "FlowID", taps, 0, null, observer);
-    }
-
-    @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "eventsCodec is null")
-    public void testConstructorNullEventsCodec()
-    {
-        new HttpEventTapFlow(httpClient, null, "EventType", "FlowID", taps, 0, null, observer);
+        new HttpEventTapFlow(null, "EventType", null, "FlowID", taps, 0, null, observer);
     }
 
     @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "eventType is null")
     public void testConstructorNullEventType()
     {
-        new HttpEventTapFlow(httpClient, EVENT_LIST_JSON_CODEC, null, "FlowID", taps, 0, null, observer);
+        new HttpEventTapFlow(httpClient, null, null, "FlowID", taps, 0, null, observer);
     }
 
     @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "flowId is null")
     public void testConstructorNullFlowId()
     {
-        new HttpEventTapFlow(httpClient, EVENT_LIST_JSON_CODEC, "EventType", null, taps, 0, null, observer);
+        new HttpEventTapFlow(httpClient, "EventType", null, null, taps, 0, null, observer);
     }
 
     @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "taps is null")
     public void testConstructorNullTaps()
     {
-        new HttpEventTapFlow(httpClient, EVENT_LIST_JSON_CODEC, "EventType", "FlowID", null, 0, null, observer);
+        new HttpEventTapFlow(httpClient, "EventType", null, "FlowID", null, 0, null, observer);
     }
 
     @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "taps is empty")
     public void testConstructorEmptyTaps()
     {
-        new HttpEventTapFlow(httpClient, EVENT_LIST_JSON_CODEC, "EventType", "FlowID", ImmutableSet.<URI>of(), 0, null, observer);
+        new HttpEventTapFlow(httpClient, "EventType", null, "FlowID", ImmutableSet.<URI>of(), 0, null, observer);
     }
 
     @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "retryDelay is null")
     public void testConstructorNullRetryDelay()
     {
-        new HttpEventTapFlow(httpClient, EVENT_LIST_JSON_CODEC, "EventType", "FlowID", ImmutableSet.<URI>of(), 1, null, observer);
+        new HttpEventTapFlow(httpClient, "EventType", null, "FlowID", ImmutableSet.<URI>of(), 1, null, observer);
     }
 
     @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "observer is null")
     public void testConstructorNullObserver()
     {
-        new HttpEventTapFlow(httpClient, EVENT_LIST_JSON_CODEC, "EventType", "FlowID", taps, 0, null, null);
+        new HttpEventTapFlow(httpClient, "EventType", null, "FlowID", taps, 0, null, null);
     }
 
     @Test
@@ -421,6 +426,66 @@ public class TestHttpEventTapFlow
         verifyNoMoreInteractions(observer);
     }
 
+    @Test
+    public void testFilteredProcessBatch()
+            throws Exception
+    {
+        List<Event> filteredEvents = ImmutableList.of(
+                new Event("EventType", uuidForEvent1, "foo.com", nowForEvent1, ImmutableMap.<String, Object>of("key1", "value1", "key2", "value2")),
+                new Event("EventTYpe", uuidForEvent2, "foo.com", nowForEvent2, ImmutableMap.<String, Object>of("key1", "value1a", "key2", "value2a")));
+
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+
+        filteredEventTapFlow.processBatch(events);
+        List<Request> requests = httpClient.getRequests();
+        assertEquals(requests.size(), 1);
+
+        Request request = requests.get(0);
+        BodyGenerator bodyGenerator = request.getBodyGenerator();
+        assertTrue(filteredTaps.contains(request.getUri()));
+
+        bodyGenerator.write(byteArrayOutputStream);
+        assertEquals(byteArrayOutputStream.toString(), EVENT_LIST_JSON_CODEC.toJson(filteredEvents));
+
+        assertEquals(request.getHeaders().get(CONTENT_TYPE), ImmutableList.of(APPLICATION_JSON));
+    }
+
+    @Test
+    public void testMultipleFilteredTapsPlayNicely()
+            throws Exception
+    {
+        List<Event> filteredEvents = ImmutableList.of(
+                new Event("EventType", uuidForEvent1, "foo.com", nowForEvent1, ImmutableMap.<String, Object>of("key1", "value1", "key2", "value2")),
+                new Event("EventTYpe", uuidForEvent2, "foo.com", nowForEvent2, ImmutableMap.<String, Object>of("key1", "value1a", "key2", "value2a")));
+
+        List<Event> alternateFilteredEvents = ImmutableList.of(
+                new Event("EventType", uuidForEvent1, "foo.com", nowForEvent1, ImmutableMap.<String, Object>of("key3", "value3")),
+                new Event("EventTYpe", uuidForEvent2, "foo.com", nowForEvent2, ImmutableMap.<String, Object>of("key3", "value3a")));
+
+
+        filteredEventTapFlow.processBatch(events);
+        alternateFilteredEventTapFlow.processBatch(events);
+
+        List<Request> requests = httpClient.getRequests();
+        assertEquals(requests.size(), 2);
+
+        Request request = requests.get(0);
+        BodyGenerator bodyGenerator = request.getBodyGenerator();
+        assertTrue(filteredTaps.contains(request.getUri()));
+
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        bodyGenerator.write(byteArrayOutputStream);
+        assertEquals(byteArrayOutputStream.toString(), EVENT_LIST_JSON_CODEC.toJson(filteredEvents));
+
+        request = requests.get(1);
+        bodyGenerator = request.getBodyGenerator();
+        assertTrue(alternateFilteredTaps.contains(request.getUri()));
+
+        byteArrayOutputStream = new ByteArrayOutputStream();
+        bodyGenerator.write(byteArrayOutputStream);
+        assertEquals(byteArrayOutputStream.toString(), EVENT_LIST_JSON_CODEC.toJson(alternateFilteredEvents));
+    }
+
     private void clearFirstBatchHeaders(HttpEventTapFlow eventTapFlow, Set<URI> taps)
     {
         // Keep sending events until each tap receives a message.
@@ -475,5 +540,4 @@ public class TestHttpEventTapFlow
 
         assertEqualsNoOrder(request.getHeaders().get(X_PROOFPOINT_QOS).toArray(), headerBuilder.build().toArray());
     }
-
 }

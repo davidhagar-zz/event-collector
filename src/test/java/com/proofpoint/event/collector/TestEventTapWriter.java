@@ -15,7 +15,6 @@
  */
 package com.proofpoint.event.collector;
 
-import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -1036,27 +1035,27 @@ public class TestEventTapWriter
     private class MockEventTapFlowFactory implements EventTapFlowFactory
     {
         @Override
-        public EventTapFlow createEventTapFlow(String eventType, String flowId, Set<URI> taps, Observer observer)
+        public EventTapFlow createEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps, Observer observer)
         {
             return createEventTapFlow(nonQosEventTapFlows, eventType, flowId, taps, observer);
         }
 
         @Override
-        public EventTapFlow createEventTapFlow(String eventType, String flowId, Set<URI> taps)
+        public EventTapFlow createEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps)
         {
-            return createEventTapFlow(eventType, flowId, taps, EventTapFlow.NULL_OBSERVER);
+            return createEventTapFlow(eventType, propertiesToSerialize, flowId, taps, EventTapFlow.NULL_OBSERVER);
         }
 
         @Override
-        public EventTapFlow createQosEventTapFlow(String eventType, String flowId, Set<URI> taps, Observer observer)
+        public EventTapFlow createQosEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps, Observer observer)
         {
             return createEventTapFlow(qosEventTapFlows, eventType, flowId, taps, observer);
         }
 
         @Override
-        public EventTapFlow createQosEventTapFlow(String eventType, String flowId, Set<URI> taps)
+        public EventTapFlow createQosEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps)
         {
-            return createQosEventTapFlow(eventType, flowId, taps, EventTapFlow.NULL_OBSERVER);
+            return createQosEventTapFlow(eventType, propertiesToSerialize, flowId, taps, EventTapFlow.NULL_OBSERVER);
         }
 
         private EventTapFlow createEventTapFlow(Multimap<List<String>, MockEventTapFlow> eventTapFlows, String eventType, String flowId, Set<URI> taps, Observer observer)

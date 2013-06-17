@@ -18,16 +18,12 @@ package com.proofpoint.event.collector;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.inject.TypeLiteral;
 import com.proofpoint.event.collector.EventTapFlow.Observer;
-import com.proofpoint.http.client.HttpClient;
 import com.proofpoint.http.client.Request;
-import com.proofpoint.http.client.ResponseHandler;
 import com.proofpoint.json.JsonCodec;
 import com.proofpoint.units.Duration;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
-import org.mockito.ArgumentCaptor;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -92,7 +88,7 @@ public class TestHttpEventTapFlowFactory
     public void testNonQosCreate()
             throws Exception
     {
-        testCreatedEventTapFlow(factory.createEventTapFlow(eventTypeA, flowIdA, tapsA, observer),
+        testCreatedEventTapFlow(factory.createEventTapFlow(eventTypeA, null, flowIdA, tapsA, observer),
                 eventTypeA, flowIdA, tapsA, 0, observer);
     }
 
@@ -100,7 +96,7 @@ public class TestHttpEventTapFlowFactory
     public void testNonQosCreateWithoutObserver()
             throws Exception
     {
-        testCreatedEventTapFlow(factory.createEventTapFlow(eventTypeB, flowIdB, tapsB),
+        testCreatedEventTapFlow(factory.createEventTapFlow(eventTypeB, null, flowIdB, tapsB),
                 eventTypeB, flowIdB, tapsB, 0, NULL_OBSERVER);
     }
 
@@ -108,7 +104,7 @@ public class TestHttpEventTapFlowFactory
     public void testQosCreate()
             throws Exception
     {
-        testCreatedEventTapFlow(factory.createQosEventTapFlow(eventTypeA, flowIdA, tapsA, observer),
+        testCreatedEventTapFlow(factory.createQosEventTapFlow(eventTypeA, null, flowIdA, tapsA, observer),
                 eventTypeA, flowIdA, tapsA,  qosRetryCount, observer);
     }
 
@@ -116,7 +112,7 @@ public class TestHttpEventTapFlowFactory
     public void testQosCreateWithoutObserver()
             throws Exception
     {
-        testCreatedEventTapFlow(factory.createQosEventTapFlow(eventTypeB, flowIdB, tapsB),
+        testCreatedEventTapFlow(factory.createQosEventTapFlow(eventTypeB, null, flowIdB, tapsB),
                 eventTypeB, flowIdB, tapsB, qosRetryCount, NULL_OBSERVER);
     }
 

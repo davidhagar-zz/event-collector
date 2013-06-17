@@ -46,26 +46,26 @@ public class HttpEventTapFlowFactory implements EventTapFlowFactory
     }
 
     @Override
-    public EventTapFlow createEventTapFlow(String eventType, String flowId, Set<URI> taps, Observer observer)
+    public EventTapFlow createEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps, Observer observer)
     {
-        return new HttpEventTapFlow(httpClient, eventsCodec, eventType, flowId, taps, 0, null, observer);
+        return new HttpEventTapFlow(httpClient, eventType, propertiesToSerialize, flowId, taps, 0, null, observer);
     }
 
     @Override
-    public EventTapFlow createEventTapFlow(String eventType, String flowId, Set<URI> taps)
+    public EventTapFlow createEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps)
     {
-        return new HttpEventTapFlow(httpClient, eventsCodec, eventType, flowId, taps, 0, null, NULL_OBSERVER);
+        return new HttpEventTapFlow(httpClient, eventType, propertiesToSerialize, flowId, taps, 0, null, NULL_OBSERVER);
     }
 
     @Override
-    public EventTapFlow createQosEventTapFlow(String eventType, String flowId, Set<URI> taps, Observer observer)
+    public EventTapFlow createQosEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps, Observer observer)
     {
-        return new HttpEventTapFlow(httpClient, eventsCodec, eventType, flowId, taps, qosRetryCount, qosRetryDelay, observer);
+        return new HttpEventTapFlow(httpClient, eventType, propertiesToSerialize, flowId, taps, qosRetryCount, qosRetryDelay, observer);
     }
 
     @Override
-    public EventTapFlow createQosEventTapFlow(String eventType, String flowId, Set<URI> taps)
+    public EventTapFlow createQosEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps)
     {
-        return new HttpEventTapFlow(httpClient, eventsCodec, eventType, flowId, taps, qosRetryCount, qosRetryDelay, NULL_OBSERVER);
+        return new HttpEventTapFlow(httpClient, eventType, propertiesToSerialize, flowId, taps, qosRetryCount, qosRetryDelay, NULL_OBSERVER);
     }
 }

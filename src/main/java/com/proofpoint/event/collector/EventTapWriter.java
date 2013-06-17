@@ -16,6 +16,7 @@
 package com.proofpoint.event.collector;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -191,6 +192,7 @@ public class EventTapWriter implements EventWriter, EventTapStats
             String eventType = properties.get("eventType");
             String flowId = properties.get(FLOW_ID_PROPERTY_NAME);
             URI uri = safeUriFromString(properties.get("http"));
+            Set<String> propertiesToSerialize = safeStringSetFromCsvString(properties.get("properties"));
             String qosDelivery = properties.get("qos.delivery");
 
             if (isNullOrEmpty(eventType) || isNullOrEmpty(flowId) || uri == null) {
@@ -214,6 +216,7 @@ public class EventTapWriter implements EventWriter, EventTapStats
             }
 
             flowBuilder.addDestination(uri);
+            flowBuilder.addPropertiesToSerialize(propertiesToSerialize);
         }
 
         return constructFlowsFromBuilderMap(flows);
@@ -247,15 +250,16 @@ public class EventTapWriter implements EventWriter, EventTapStats
             String flowId = flowEntry.getKey();
             FlowInfo updatedFlowInfo = flowEntry.getValue();
             Set<URI> destinations = ImmutableSet.copyOf(updatedFlowInfo.destinations);
+            Set<String> propertiesToSerialize = ImmutableSet.copyOf(firstNonNull(updatedFlowInfo.propertiesToSerialize, ImmutableSet.<String>of()));
             FlowPolicy existingFlowPolicy = existingPolicy.flowPolicies.get(flowId);
 
             if (existingFlowPolicy == null || existingFlowPolicy.qosEnabled != updatedFlowInfo.qosEnabled) {
                 EventTapFlow eventTapFlow;
                 if (updatedFlowInfo.qosEnabled) {
-                    eventTapFlow = createQosEventTapFlow(eventType, flowId, destinations);
+                    eventTapFlow = createQosEventTapFlow(eventType, propertiesToSerialize, flowId, destinations);
                 }
                 else {
-                    eventTapFlow = createNonQosEventTapFlow(eventType, flowId, destinations);
+                    eventTapFlow = createNonQosEventTapFlow(eventType, propertiesToSerialize, flowId, destinations);
                 }
                 BatchProcessor<Event> batchProcessor = createBatchProcessor(eventType, flowId, eventTapFlow);
                 policyBuilder.addFlowPolicy(flowId, batchProcessor, eventTapFlow, updatedFlowInfo.qosEnabled);
@@ -328,14 +332,14 @@ public class EventTapWriter implements EventWriter, EventTapStats
         };
     }
 
-    private EventTapFlow createNonQosEventTapFlow(String eventType, String flowId, Set<URI> taps)
+    private EventTapFlow createNonQosEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps)
     {
-        return eventTapFlowFactory.createEventTapFlow(eventType, flowId, taps, createEventTapFlowObserver(eventType, flowId));
+        return eventTapFlowFactory.createEventTapFlow(eventType, propertiesToSerialize, flowId, taps, createEventTapFlowObserver(eventType, flowId));
     }
 
-    private EventTapFlow createQosEventTapFlow(String eventType, String flowId, Set<URI> taps)
+    private EventTapFlow createQosEventTapFlow(String eventType, Set<String> propertiesToSerialize, String flowId, Set<URI> taps)
     {
-        return eventTapFlowFactory.createQosEventTapFlow(eventType, flowId, taps, createEventTapFlowObserver(eventType, flowId));
+        return eventTapFlowFactory.createQosEventTapFlow(eventType, propertiesToSerialize, flowId, taps, createEventTapFlowObserver(eventType, flowId));
     }
 
     private EventTapFlow.Observer createEventTapFlowObserver(final String eventType, final String flowId)
@@ -377,6 +381,16 @@ public class EventTapWriter implements EventWriter, EventTapStats
         }
     }
 
+    private static Set<String> safeStringSetFromCsvString(String csv)
+    {
+        try {
+            return ImmutableSet.copyOf(Splitter.on(",").split(csv));
+        }
+        catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private static String createBatchProcessorName(String eventType, String flowId)
     {
         return String.format("%s{%s}", eventType, flowId);
@@ -386,11 +400,13 @@ public class EventTapWriter implements EventWriter, EventTapStats
     {
         private final boolean qosEnabled;
         private final Set<URI> destinations;
+        private final Set<String> propertiesToSerialize;
 
-        private FlowInfo(boolean qosEnabled, Set<URI> destinations)
+        private FlowInfo(boolean qosEnabled, Set<URI> destinations, Set<String> propertiesToSerialize)
         {
             this.qosEnabled = qosEnabled;
             this.destinations = ImmutableSet.copyOf(destinations);
+            this.propertiesToSerialize = propertiesToSerialize;
         }
 
         static Builder builder()
@@ -402,6 +418,7 @@ public class EventTapWriter implements EventWriter, EventTapStats
         {
             private boolean qosEnabled = false;
             private ImmutableSet.Builder<URI> destinations = ImmutableSet.builder();
+            private ImmutableSet.Builder<String> propertiesToSerialize = ImmutableSet.builder();
 
             public Builder setQosEnabled(boolean enabled)
             {
@@ -415,9 +432,19 @@ public class EventTapWriter implements EventWriter, EventTapStats
                 return this;
             }
 
+            public Builder addPropertiesToSerialize(Iterable<String> properties)
+            {
+                if (properties != null) {
+                    for (String property : properties) {
+                        propertiesToSerialize.add(property);
+                    }
+                }
+                return this;
+            }
+
             public FlowInfo build()
             {
-                return new FlowInfo(qosEnabled, destinations.build());
+                return new FlowInfo(qosEnabled, destinations.build(), propertiesToSerialize.build());
             }
         }
     }
